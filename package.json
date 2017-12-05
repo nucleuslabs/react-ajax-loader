@@ -1,0 +1,30 @@
+{
+  "name": "ouid",
+  "version": "0.5.1",
+  "description": "Ordered UUIDs for Node and Browser",
+  "browser": "src/index.js",
+  "scripts": {
+    "build": "bundilio",
+    "publish": "cd dist && npm publish"
+  },
+  "author": "NucleusLabs Information Technologies Inc.",
+  "license": "MIT",
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org"
+  },
+  "repository": {
+    "type": "hg",
+    "url": "https://bitbucket.org/nucleuslabs/ouid"
+  },
+  "dependencies": {
+    "lodash": "^4.17.4",
+    "recompose": "^0.26.0",
+    "whatwg-fetch": "^2.0.3"
+  },
+  "devDependencies": {
+    "bundilio": "^0.4.3"
+  },
+  "peerDependencies": {
+    "react": "^16.2.0"
+  }
+}
