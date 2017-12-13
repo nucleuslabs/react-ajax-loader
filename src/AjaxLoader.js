@@ -1,5 +1,6 @@
 import React from 'react';
 import shallowEqual from 'shallowequal';
+import hash from 'object-hash';
 
 export default class AjaxLoader {
 
@@ -20,7 +21,7 @@ export default class AjaxLoader {
         this.batchSize = batchSize;
         this.minDelay = minDelay;
         this.maxDelay = maxDelay;
-        this.batch = [];
+        this.batch = new Map;
         this.start = null;
         this.timer = null;
         this.fetchOptions = fetchOptions;
@@ -30,6 +31,8 @@ export default class AjaxLoader {
         this.defaultErrorProp = defaultErrorProp;
         this.defaultEqualityCheck = defaultEqualityCheck;
         this.defaultHandler = defaultHandler;
+        
+        this.reqCounter = 0;
 
         if(this.batchSize <= 0) {
             throw new Error(`batchSize must be > 0, got ${this.batchSize}`);
@@ -38,18 +41,17 @@ export default class AjaxLoader {
 
     hoc(...requests) {
         const loader = this;
-        const lastData = Object.create(null);
         
-        for(let i=0; i<requests.length; ++i) {
-            Object.assign(requests[i], {
+        for(let req of requests) {
+            defaults(req, {
                 equalityCheck: this.defaultEqualityCheck,
                 handler: this.defaultHandler,
                 loadingProp: this.defaultLoadingProp,
                 errorProp: this.defaultErrorProp,
                 dataProp: this.defaultDataProp,
                 refreshProp: null,
-            }, requests[i], {
-                _id: i,
+            }, {
+                _id: ++this.reqCounter,
             });
         }
 
@@ -60,16 +62,19 @@ export default class AjaxLoader {
                 
                 constructor(props) {
                     super(props);
-                    for(let req of requests) {
-                        req._component = this; // FIXME: what if this same enhancer is used on multiple components?? do we need to copy the requests into this.requests?
-                    }
+                    // *copy* all the requests into the component
+                    this.requests = requests.map(req => ({
+                        ...req,
+                        _component: this,
+                    })); 
+                    this.lastData = Object.create(null);
                 }
                 
                 componentWillMount() {
-                    loader._push(requests.map(req => {
+                    loader._push(this.requests.map(req => {
                         if(typeof req.data === 'function') {
                             let data = req.data.call(this, this.props);
-                            lastData[req._id] = data;
+                            this.lastData[req._id] = data;
                             req = {...req, data};
                         }
 
@@ -78,11 +83,11 @@ export default class AjaxLoader {
                 }
 
                 componentWillReceiveProps(nextProps) {
-                    let updated = requests.reduce((acc, req) => {
+                    let updated = this.requests.reduce((acc, req) => {
                         if(typeof req.data === 'function') {
                             let data = req.data.call(this, this.props);
-                            if(!this.equalityCheck(lastData[req._id], data)) {
-                                lastData[req._id] = data;
+                            if(!req.equalityCheck(this.lastData[req._id], data)) {
+                                this.lastData[req._id] = data;
                                 acc.push({...req, data});
                             }
                         }
@@ -96,12 +101,12 @@ export default class AjaxLoader {
 
                 render() {
                     let props = {...this.props, ...this.state};
-                    for(let req of requests) {
+                    for(let req of this.requests) {
                         if(req.refreshProp) {
                             props[req.refreshProp] = () => {
                                 if(typeof req.data === 'function') {
                                     let data = req.data.call(this, this.props);
-                                    lastData[req._id] = data;
+                                    this.lastData[req._id] = data;
                                     req = {...req, data};
                                 }
                                 loader._push(req);
@@ -117,7 +122,15 @@ export default class AjaxLoader {
     }
 
     _push = requests => {
-        this.batch.push(...requests);
+        for(let req of requests) {
+            let key = hash([req.route,req.data]);
+            let entry = this.batch.get(key);
+            if(entry) {
+                entry.push(req);
+            } else {
+                this.batch.set(key, [req]);
+            }
+        }
 
         for(let req of requests) {
             if(req.loadingProp) {
@@ -127,19 +140,9 @@ export default class AjaxLoader {
             }
         }
 
-        if(this.batch.length >= this.batchSize) {
-            // if batch size is met
-            if(this.batch.length > this.batchSize) {
-                // if batch exceeds maximum batch size, send first chunk and re-queue the remainder
-                let first = this.batch.slice(0, this.batchSize);
-                let rest = this.batch.slice(this.batchSize);
-                this.batch = first;
-                this._run();
-                this._push(rest);
-            } else {
-                // otherwise send whole batch immediately
-                this._run();
-            }
+        if(this.batch.size >= this.batchSize) {
+            // TODO: if batch size is *exceeded* should we split the batch?
+            this._run();
         } else if(this.start) {
             // if the timer has been started...
             let elapsed = performance.now() - this.start;
@@ -163,13 +166,16 @@ export default class AjaxLoader {
         this.start = null;
         this.timer = null;
         this._send();
-        this.batch.length = 0;
+        this.batch.clear();
     };
 
     _send = () => {
-     
-        let requests = [...this.batch];
-        let reqData = requests.map(({route,data}) => ({route,data}));
+        let reqMap = Array.from(this.batch.values());
+        let reqData = reqMap.map(reqs => ({
+            route: reqs[0].route,
+            data: reqs[0].data,
+        }));
+        
         let {headers, ...options} = resolveValue(this.fetchOptions) || {};
         
         // console.log('send',this.endpoint,reqData);
@@ -187,47 +193,68 @@ export default class AjaxLoader {
         })
             .then(res => res.json())
             .then(responses => {
-                if(requests.length !== responses.length) {
-                    throw new Error(`Server error: response length (${responses.length}) does not match request length (${requests.length})`);
+                if(reqData.length !== responses.length) {
+                    throw new Error(`Server error: response length (${responses.length}) does not match request length (${reqData.length})`);
                 }
                 for(let i = 0; i < responses.length; ++i) {
                     let res = responses[i];
-                    let req = requests[i];
-                    switch(responses[i].type) {
-                        case 'success': {
-                            let newState = req.handler.call(req._component, res.payload, req);
-                            if(newState !== undefined) {
-                                console.log('newState',req,res);
-                                req._component.setState(newState);
+                    for(let req of reqMap[i]) {
+                        switch(res.type) {
+                            case 'success': {
+                                let newState = req.handler.call(req._component, res.payload, req);
+                                if(newState !== undefined) {
+                                    // console.log('newState', req, res);
+                                    req._component.setState(newState);
+                                }
+                                break;
                             }
-                            break;
+                            case 'error':
+                                if(process.env.NODE_ENV !== 'production') {
+                                    console.group(`Error in response to route "${req.route}"`);
+                                    console.error(res.payload.message);
+                                    console.info("Request:", req);
+                                    console.info("Response:", res.payload);
+                                    console.groupEnd();
+                                }
+
+                                if(req.errorProp) {
+                                    req._component.setState({
+                                        [req.errorProp]: res.payload,
+                                    });
+                                }
+                                break;
+                            default:
+                                throw new Error(`Server error: unexpected response type "${res.type}"`);
                         }
-                        case 'error':
-                            if(process.env.NODE_ENV !== 'production') {
-                                console.group(`Error in response to route "${requests[i].route}"`);
-                                console.error(res.payload.message);
-                                console.info("Request:", requests[i]);
-                                console.info("Response:", res.payload);
-                                console.groupEnd();
-                            }
-                            
-                            if(req.errorProp) {
-                                req._component.setState({
-                                    [req.errorProp]: res.payload,
-                                });
-                            }
-                            break;
-                        default:
-                            throw new Error(`Server error: unexpected response type "${res.type}"`);
-                    }
-                    if(req.loadingProp) {
-                        req._component.setState(state => ({
-                            [req.loadingProp]: state[req.loadingProp] ? state[req.loadingProp] - 1 : 0,
-                        }));
+                        if(req.loadingProp) {
+                            req._component.setState(state => ({
+                                [req.loadingProp]: state[req.loadingProp] ? state[req.loadingProp] - 1 : 0,
+                            }));
+                        }
                     }
                 }
             })
     }
+}
+
+function defaults(obj, defaults, overwrite) {
+    for(let key of Object.keys(defaults)) {
+        if(obj[key] === undefined) {
+            obj[key] = defaults[key];
+        }
+    }
+    for(let key of Object.keys(overwrite)) {
+        obj[key] = overwrite[key];
+    }
+}
+
+function map(iter, cb) {
+    let out = [];
+    let i = -1;
+    for(let x of iter) {
+        out.push(cb(x,++i));
+    }
+    return out;
 }
 
 function splitArray(array, index) {
