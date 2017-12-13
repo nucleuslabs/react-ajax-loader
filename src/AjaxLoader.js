@@ -43,7 +43,7 @@ export default class AjaxLoader {
         const loader = this;
         
         for(let req of requests) {
-            defaults(req, {
+            setDefaults(req, {
                 equalityCheck: this.defaultEqualityCheck,
                 handler: this.defaultHandler,
                 loadingProp: this.defaultLoadingProp,
@@ -85,7 +85,7 @@ export default class AjaxLoader {
                 componentWillReceiveProps(nextProps) {
                     let updated = this.requests.reduce((acc, req) => {
                         if(typeof req.data === 'function') {
-                            let data = req.data.call(this, this.props);
+                            let data = req.data.call(this, nextProps);
                             if(!req.equalityCheck(this.lastData[req._id], data)) {
                                 this.lastData[req._id] = data;
                                 acc.push({...req, data});
@@ -110,7 +110,7 @@ export default class AjaxLoader {
                                     req = {...req, data};
                                 }
                                 loader._push(req);
-                            }
+                            };
                         }
                     }
                     return React.createElement(BaseComponent, props);
@@ -159,19 +159,18 @@ export default class AjaxLoader {
             this.start = performance.now();
             this.timer = setTimeout(this._run, this.minDelay);
         }
-    }
+    };
 
     _run = () => {
         clearTimeout(this.timer);
         this.start = null;
         this.timer = null;
-        this._send();
+        this._send(Array.from(this.batch.values()));
         this.batch.clear();
     };
 
-    _send = () => {
-        let reqMap = Array.from(this.batch.values());
-        let reqData = reqMap.map(reqs => ({
+    _send = batch => {
+        let reqData = batch.map(reqs => ({
             route: reqs[0].route,
             data: reqs[0].data,
         }));
@@ -198,7 +197,7 @@ export default class AjaxLoader {
                 }
                 for(let i = 0; i < responses.length; ++i) {
                     let res = responses[i];
-                    for(let req of reqMap[i]) {
+                    for(let req of batch[i]) {
                         switch(res.type) {
                             case 'success': {
                                 let newState = req.handler.call(req._component, res.payload, req);
@@ -233,11 +232,11 @@ export default class AjaxLoader {
                         }
                     }
                 }
-            })
+            });
     }
 }
 
-function defaults(obj, defaults, overwrite) {
+function setDefaults(obj, defaults, overwrite) {
     for(let key of Object.keys(defaults)) {
         if(obj[key] === undefined) {
             obj[key] = defaults[key];
