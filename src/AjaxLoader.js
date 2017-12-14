@@ -1,11 +1,13 @@
 import React from 'react';
 import shallowEqual from 'shallowequal';
-import hash from 'object-hash';
+import objectHash from 'object-hash'; // also a good choice: json-stable-stringify
 
 export default class AjaxLoader {
 
     constructor({
-        endpoint, 
+        endpoint,
+        cache,
+        hash = objectHash,
         batchSize = 4, 
         minDelay = 8, 
         maxDelay = 32, 
@@ -16,8 +18,12 @@ export default class AjaxLoader {
         defaultErrorProp = 'error',
         defaultEqualityCheck = shallowEqual,
         defaultHandler = setStateHandler,
+      
     }) {
+        // TODO: move these all into this.options instead?
         this.endpoint = endpoint;
+        this.cache = cache;
+        this.hash = hash;
         this.batchSize = batchSize;
         this.minDelay = minDelay;
         this.maxDelay = maxDelay;
@@ -50,6 +56,7 @@ export default class AjaxLoader {
                 errorProp: this.defaultErrorProp,
                 dataProp: this.defaultDataProp,
                 refreshProp: null,
+                fetchPolicy: 'cache-and-network',
             }, {
                 _id: ++this.reqCounter,
             });
@@ -123,7 +130,7 @@ export default class AjaxLoader {
 
     _push = requests => {
         for(let req of requests) {
-            let key = hash([req.route,req.data]);
+            let key = this.hash([req.route,req.data]);
             let entry = this.batch.get(key);
             if(entry) {
                 entry.push(req);
