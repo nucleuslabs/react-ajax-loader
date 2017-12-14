@@ -27,11 +27,13 @@ export default class InMemoryCache {
     }
 }
 
+const ARRAY_ESTIMATE = 10;
+const OBJECT_ESTIMATE = 50;
 
 // https://stackoverflow.com/questions/1248302/how-to-get-the-size-of-a-javascript-object
 function roughSize(obj) {
 
-    let seen = new Set();
+    let seen = new Set(); // <--- not necessary, data is coming from server. no loops
     let stack = [obj];
     let bytes = 0;
 
@@ -39,7 +41,7 @@ function roughSize(obj) {
         let value = stack.pop();
 
         bytes += 2; // variable type
-        if(typeof value === 'boolean') {
+        if(value == null || typeof value === 'boolean') {
             bytes += 4;
         } else if(typeof value === 'string') {
             bytes += 8 + value.length * 2;
@@ -50,8 +52,17 @@ function roughSize(obj) {
                 seen.add(value);
                 if(Array.isArray(value)) {
                     bytes += 8; // length
-                    for(let x of value) {
-                        stack.push(x);
+                    if(value.length <= ARRAY_ESTIMATE) {
+                        for(let x of value) {
+                            stack.push(x);
+                        }
+                    } else {
+                        // average out the size so that we don't have to do a deep count
+                        let arraySize = 0;
+                        for(let i=0; i<ARRAY_ESTIMATE; ++i) {
+                            arraySize += roughSize(value[i]);
+                        }
+                        bytes += arraySize/ARRAY_ESTIMATE*value.length;
                     }
                 } else {
                     bytes += 12; // meta-data
