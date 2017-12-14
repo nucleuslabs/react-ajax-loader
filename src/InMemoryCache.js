@@ -4,9 +4,9 @@ export default class InMemoryCache {
 
     constructor() {
         this.cache = LRU({
-            max: 30*1024*1024, 
+            max: (window.screen.width < 1080 ? 10 : 30) * 1024 * 1024, 
             maxAge: 1000*60*5,
-            length: obj => roughSize(obj),
+            length: obj => sizeof(obj),
         });
     }
 
@@ -31,9 +31,7 @@ const ARRAY_ESTIMATE = 10;
 const OBJECT_ESTIMATE = 50;
 
 // https://stackoverflow.com/questions/1248302/how-to-get-the-size-of-a-javascript-object
-function roughSize(obj) {
-
-    let seen = new Set(); // <--- not necessary, data is coming from server. no loops
+function sizeof(obj) {
     let stack = [obj];
     let bytes = 0;
 
@@ -46,30 +44,34 @@ function roughSize(obj) {
         } else if(typeof value === 'string') {
             bytes += 8 + value.length * 2;
         } else if(typeof value === 'object') {
-            if(seen.has(value)) {
-                bytes += 8; // size of pointer
-            } else {
-                seen.add(value);
-                if(Array.isArray(value)) {
-                    bytes += 8; // length
-                    if(value.length <= ARRAY_ESTIMATE) {
-                        for(let x of value) {
-                            stack.push(x);
-                        }
-                    } else {
-                        // average out the size so that we don't have to do a deep count
-                        let arraySize = 0;
-                        for(let i=0; i<ARRAY_ESTIMATE; ++i) {
-                            arraySize += roughSize(value[i]);
-                        }
-                        bytes += arraySize/ARRAY_ESTIMATE*value.length;
+            if(Array.isArray(value)) {
+                bytes += 8; // length
+                if(value.length <= ARRAY_ESTIMATE) {
+                    for(let x of value) {
+                        stack.push(x);
                     }
                 } else {
-                    bytes += 12; // meta-data
-                    for(let key of Object.keys(value)) {
+                    // average out the size so that we don't have to do a deep count
+                    let arrSize = 0;
+                    for(let i = 0; i < ARRAY_ESTIMATE; ++i) {
+                        arrSize += sizeof(value[i]);
+                    }
+                    bytes += arrSize / ARRAY_ESTIMATE * value.length;
+                }
+            } else {
+                bytes += 12; // meta-data
+                let keys = Object.keys(value);
+                if(keys.length <= OBJECT_ESTIMATE) {
+                    for(let key of keys) {
                         stack.push(key);
                         stack.push(value[key]);
                     }
+                } else {
+                    let objSize = 0;
+                    for(let i = 0; i < OBJECT_ESTIMATE; ++i) {
+                        objSize += sizeof(keys[i]) + sizeof(value[keys[i]]);
+                    }
+                    bytes += objSize / OBJECT_ESTIMATE * keys.length;
                 }
             }
         } else {
