@@ -1,6 +1,6 @@
 import LRU from 'lru-cache'; // https://github.com/isaacs/node-lru-cache
 
-export default class InMemoryCache {
+export default class MemoryCache {
 
     constructor() {
         this.cache = LRU({
@@ -10,20 +10,20 @@ export default class InMemoryCache {
         });
     }
 
-    get() {
-
+    get(key) {
+        return this.cache.get(key);
     }
 
-    set() {
-
+    set(key, value) {
+        this.cache.set(key,value);
     }
 
-    delete() {
-
+    delete(key) {
+        this.cache.del(key);
     }
 
     clear() {
-
+        this.cache.reset();
     }
 }
 

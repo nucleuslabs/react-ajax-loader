@@ -1,6 +1,7 @@
 import React from 'react';
 import shallowEqual from 'shallowequal';
 import objectHash from 'object-hash'; // also a good choice: json-stable-stringify
+import * as FP from './FetchPolicy';
 
 export default class AjaxLoader {
 
@@ -18,6 +19,7 @@ export default class AjaxLoader {
         defaultErrorProp = 'error',
         defaultEqualityCheck = shallowEqual,
         defaultHandler = setStateHandler,
+        defaultFetchPolicy = FP.CacheAndNetwork,
       
     }) {
         // TODO: move these all into this.options instead?
@@ -37,6 +39,7 @@ export default class AjaxLoader {
         this.defaultErrorProp = defaultErrorProp;
         this.defaultEqualityCheck = defaultEqualityCheck;
         this.defaultHandler = defaultHandler;
+        this.defaultFetchPolicy = defaultFetchPolicy;
         
         this.reqCounter = 0;
 
@@ -56,7 +59,7 @@ export default class AjaxLoader {
                 errorProp: this.defaultErrorProp,
                 dataProp: this.defaultDataProp,
                 refreshProp: null,
-                fetchPolicy: 'cache-and-network',
+                fetchPolicy: this.defaultFetchPolicy,
             }, {
                 _id: ++this.reqCounter,
             });
@@ -130,17 +133,30 @@ export default class AjaxLoader {
 
     _push = requests => {
         for(let req of requests) {
+            let cacheHit = false;
             let key = this.hash([req.route,req.data]);
+            
+            if(this.cache && req.fetchPolicy !== FP.NetworkOnly) {
+                let res = this.cache.get(key);
+                if(res !== undefined) {
+                    success(req, res);
+                    if(req.fetchPolicy !== FP.CacheAndNetwork) {
+                        continue;
+                    }
+                    cacheHit = true;
+                }
+            }
+            
             let entry = this.batch.get(key);
             if(entry) {
                 entry.push(req);
             } else {
                 this.batch.set(key, [req]);
             }
-        }
 
-        for(let req of requests) {
-            if(req.loadingProp) {
+            if(req.loadingProp && !cacheHit) {
+                // FIXME: if there's a cache hit but fetch policy is cache-and-network, then....should we show the loading or not? 
+                // FIXME: why are the results flashing when there was a cache hit..?
                 req._component.setState(state => ({
                     [req.loadingProp]: state[req.loadingProp] ? state[req.loadingProp] + 1 : 1,
                 }));
@@ -172,11 +188,20 @@ export default class AjaxLoader {
         clearTimeout(this.timer);
         this.start = null;
         this.timer = null;
-        this._send(Array.from(this.batch.values()));
+        this._send();
         this.batch.clear();
     };
 
-    _send = batch => {
+    _send = () => {
+        let batchIdx = 0;
+        let batch = new Array(this.batch.size);
+        let keyLookup = Object.create(null);
+        this.batch.forEach((reqs,key) => {
+            batch[batchIdx] = reqs;
+            keyLookup[batchIdx] = key;
+            ++batchIdx;
+        });
+        
         let reqData = batch.map(reqs => ({
             route: reqs[0].route,
             data: reqs[0].data,
@@ -204,16 +229,16 @@ export default class AjaxLoader {
                 }
                 for(let i = 0; i < responses.length; ++i) {
                     let res = responses[i];
+                    
+                    if(this.cache && res.type === 'success') {
+                        this.cache.set(keyLookup[i], res.payload);
+                    }
+                    
                     for(let req of batch[i]) {
                         switch(res.type) {
-                            case 'success': {
-                                let newState = req.handler.call(req._component, res.payload, req);
-                                if(newState !== undefined) {
-                                    // console.log('newState', req, res);
-                                    req._component.setState(newState);
-                                }
+                            case 'success': 
+                                success(req, res.payload);
                                 break;
-                            }
                             case 'error':
                                 if(process.env.NODE_ENV !== 'production') {
                                     console.group(`Error in response to route "${req.route}"`);
@@ -243,6 +268,14 @@ export default class AjaxLoader {
     }
 }
 
+function success(req, payload) {
+    let newState = req.handler.call(req._component, payload, req);
+    if(newState !== undefined) {
+        // console.log('newState', req, res);
+        req._component.setState(newState);
+    }
+}
+
 function setDefaults(obj, defaults, overwrite) {
     for(let key of Object.keys(defaults)) {
         if(obj[key] === undefined) {
@@ -254,11 +287,22 @@ function setDefaults(obj, defaults, overwrite) {
     }
 }
 
+
 function map(iter, cb) {
     let out = [];
     let i = -1;
     for(let x of iter) {
         out.push(cb(x,++i));
+    }
+    return out;
+}
+
+function mapValues(iter, cb) {
+    let out = new Array(iter.size);
+    let i = 0;
+    for(let x of iter.values()) {
+        out[i] = cb(x,i);
+        ++i;
     }
     return out;
 }
