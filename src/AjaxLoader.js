@@ -14,9 +14,9 @@ export default class AjaxLoader {
         maxDelay = 32, 
         fetchOptions,
         
-        defaultDataProp = 'data',
-        defaultLoadingProp = 'loading',
-        defaultErrorProp = 'error',
+        defaultDataProp = 'ajaxData',
+        defaultLoadingProp = 'ajaxLoading',
+        defaultErrorProp = 'ajaxError',
         defaultEqualityCheck = shallowEqual,
         defaultHandler = setStateHandler,
         defaultFetchPolicy = FP.CacheAndNetwork,

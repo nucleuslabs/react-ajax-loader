@@ -78,6 +78,7 @@ function sizeof(obj) {
             bytes += 8;
         }
     }
+    
     return bytes;
 }
 
