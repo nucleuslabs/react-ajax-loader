@@ -13,6 +13,7 @@ export default class AjaxLoader {
         minDelay = 8, 
         maxDelay = 32, 
         fetchOptions,
+        refreshAllProp,
         
         defaultDataProp = 'ajaxData',
         defaultLoadingProp = 'ajaxLoading',
@@ -33,6 +34,7 @@ export default class AjaxLoader {
         this.start = null;
         this.timer = null;
         this.fetchOptions = fetchOptions;
+        this.refreshAllProp = refreshAllProp;
         
         this.defaultDataProp = defaultDataProp;
         this.defaultLoadingProp = defaultLoadingProp;
@@ -111,17 +113,30 @@ export default class AjaxLoader {
 
                 render() {
                     let props = {...this.props, ...this.state};
+                    let refreshFuncs = [];
                     for(let req of this.requests) {
+                        const refresh = () => {
+                            // TODO: force cache bust
+                            if(typeof req.data === 'function') {
+                                let data = req.data.call(this, this.props);
+                                this.lastData[req._id] = data;
+                                req = {...req, data};
+                            }
+                            loader._push(req);
+                        };
+                        
                         if(req.refreshProp) {
-                            props[req.refreshProp] = () => {
-                                if(typeof req.data === 'function') {
-                                    let data = req.data.call(this, this.props);
-                                    this.lastData[req._id] = data;
-                                    req = {...req, data};
-                                }
-                                loader._push(req);
-                            };
+                            props[req.refreshProp] = refresh;
                         }
+
+                        refreshFuncs.push(refresh);
+                    }
+                    if(loader.refreshAllProp) {
+                        props[loader.refreshAllProp] = () => {
+                            for(let fn of refreshFuncs) {
+                                fn();
+                            }
+                        };
                     }
                     return React.createElement(BaseComponent, props);
                 }
@@ -154,7 +169,7 @@ export default class AjaxLoader {
                 this.batch.set(key, [req]);
             }
 
-            if(req.loadingProp && !cacheHit) {
+            if(req.loadingProp) {
                 // FIXME: if there's a cache hit but fetch policy is cache-and-network, then....should we show the loading or not? 
                 // FIXME: why are the results flashing when there was a cache hit..?
                 req._component.setState(state => ({
@@ -237,7 +252,7 @@ export default class AjaxLoader {
                     for(let req of batch[i]) {
                         switch(res.type) {
                             case 'success': 
-                                success(req, res.payload);
+                                success(req, res.payload); // FIXME: do not invoke if this request is old
                                 break;
                             case 'error':
                                 if(process.env.NODE_ENV !== 'production') {
@@ -258,9 +273,14 @@ export default class AjaxLoader {
                                 throw new Error(`Server error: unexpected response type "${res.type}"`);
                         }
                         if(req.loadingProp) {
-                            req._component.setState(state => ({
-                                [req.loadingProp]: state[req.loadingProp] ? state[req.loadingProp] - 1 : 0,
-                            }));
+                            req._component.setState(state => {
+                                if(state[req.loadingProp] > 0) {
+                                    return {
+                                        [req.loadingProp]: state[req.loadingProp] ? state[req.loadingProp] - 1 : 0,
+                                    };
+                                }
+                                return {};
+                            });
                         }
                     }
                 }
