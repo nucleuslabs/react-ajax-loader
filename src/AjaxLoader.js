@@ -23,30 +23,32 @@ export default class AjaxLoader {
         defaultFetchPolicy = FP.CacheAndNetwork,
       
     }) {
-        // TODO: move these all into this.options instead?
-        this.endpoint = endpoint;
-        this.cache = cache;
-        this.hash = hash;
-        this.batchSize = batchSize;
-        this.minDelay = minDelay;
-        this.maxDelay = maxDelay;
+        this.options = {
+            endpoint,
+            cache,
+            hash,
+            batchSize,
+            minDelay,
+            maxDelay,
+            fetchOptions,
+            refreshAllProp,
+            defaultDataProp,
+            defaultLoadingProp,
+            defaultErrorProp,
+            defaultEqualityCheck,
+            defaultHandler,
+            defaultFetchPolicy,
+        };
+        
         this.batch = new Map;
         this.start = null;
         this.timer = null;
-        this.fetchOptions = fetchOptions;
-        this.refreshAllProp = refreshAllProp;
-        
-        this.defaultDataProp = defaultDataProp;
-        this.defaultLoadingProp = defaultLoadingProp;
-        this.defaultErrorProp = defaultErrorProp;
-        this.defaultEqualityCheck = defaultEqualityCheck;
-        this.defaultHandler = defaultHandler;
-        this.defaultFetchPolicy = defaultFetchPolicy;
-        
-        this.reqCounter = 0;
+        this.reqId = 0;
+        this.rankCounter = 0;
+        this.rankLookup = Object.create(null);
 
-        if(this.batchSize <= 0) {
-            throw new Error(`batchSize must be > 0, got ${this.batchSize}`);
+        if(this.options.batchSize <= 0) {
+            throw new Error(`batchSize must be > 0, got ${this.options.batchSize}`);
         }
     }
 
@@ -55,15 +57,13 @@ export default class AjaxLoader {
         
         for(let req of requests) {
             setDefaults(req, {
-                equalityCheck: this.defaultEqualityCheck,
-                handler: this.defaultHandler,
-                loadingProp: this.defaultLoadingProp,
-                errorProp: this.defaultErrorProp,
-                dataProp: this.defaultDataProp,
+                equalityCheck: this.options.defaultEqualityCheck,
+                handler: this.options.defaultHandler,
+                loadingProp: this.options.defaultLoadingProp,
+                errorProp: this.options.defaultErrorProp,
+                dataProp: this.options.defaultDataProp,
                 refreshProp: null,
-                fetchPolicy: this.defaultFetchPolicy,
-            }, {
-                _id: ++this.reqCounter,
+                fetchPolicy: this.options.defaultFetchPolicy,
             });
         }
 
@@ -78,6 +78,7 @@ export default class AjaxLoader {
                     this.requests = requests.map(req => ({
                         ...req,
                         _component: this,
+                        _id: ++loader.reqId,
                     })); 
                     this.lastData = Object.create(null);
                 }
@@ -131,8 +132,8 @@ export default class AjaxLoader {
 
                         refreshFuncs.push(refresh);
                     }
-                    if(loader.refreshAllProp) {
-                        props[loader.refreshAllProp] = () => {
+                    if(loader.options.refreshAllProp) {
+                        props[loader.options.refreshAllProp] = () => {
                             for(let fn of refreshFuncs) {
                                 fn();
                             }
@@ -149,10 +150,10 @@ export default class AjaxLoader {
     _push = requests => {
         for(let req of requests) {
             let cacheHit = false;
-            let key = this.hash([req.route,req.data]);
+            let key = this.options.hash([req.route,req.data]);
             
-            if(this.cache && req.fetchPolicy !== FP.NetworkOnly) {
-                let res = this.cache.get(key);
+            if(this.options.cache && req.fetchPolicy !== FP.NetworkOnly) {
+                let res = this.options.cache.get(key);
                 if(res !== undefined) {
                     success(req, res);
                     if(req.fetchPolicy !== FP.CacheAndNetwork) {
@@ -162,6 +163,32 @@ export default class AjaxLoader {
                 }
             }
             
+            // console.log(JSON.stringify(map2obj(this.batch),null,2));
+            // this.batch.forEach((breqs,bkey) => {
+            //
+            //    
+            //     let oldRequests = breqs.filter(r => r._id === req._id);
+            //    
+            //     if(oldRequests.length) {
+            //         for(let or of oldRequests) {
+            //             if(or.loadingProp) {
+            //                 or._component.setState(state => ({
+            //                     [or.loadingProp]: state[or.loadingProp] - 1,
+            //                 }));
+            //             }
+            //         }
+            //         // filterInPlace(breqs, r => r._id !== req._id);
+            //     }
+            //    
+            //     // let removed = 
+            //     // if(removed && req.loadingProp) {
+            //     //     console.log('cancelled',removed);
+            //     //     req._component.setState(state => ({
+            //     //         [req.loadingProp]: state[req.loadingProp] - removed,
+            //     //     }));
+            //     // }
+            // });
+            
             let entry = this.batch.get(key);
             if(entry) {
                 entry.push(req);
@@ -169,33 +196,33 @@ export default class AjaxLoader {
                 this.batch.set(key, [req]);
             }
 
-            if(req.loadingProp) {
+            if(req.loadingProp) { // FIXME: !cacheHit will cause loading to go into the negatives, no? -- no, but this still isn't right
                 // FIXME: if there's a cache hit but fetch policy is cache-and-network, then....should we show the loading or not? 
-                // FIXME: why are the results flashing when there was a cache hit..?
+                // FIXME: why are the results flashing when there was a cache hit..? -- I think this is because the results for the last page are coming in
                 req._component.setState(state => ({
                     [req.loadingProp]: state[req.loadingProp] ? state[req.loadingProp] + 1 : 1,
                 }));
             }
         }
 
-        if(this.batch.size >= this.batchSize) {
+        if(this.batch.size >= this.options.batchSize) {
             // TODO: if batch size is *exceeded* should we split the batch?
             this._run();
         } else if(this.start) {
             // if the timer has been started...
             let elapsed = performance.now() - this.start;
-            if(elapsed >= this.maxDelay) {
+            if(elapsed >= this.options.maxDelay) {
                 // if max delay is exceeded, send the batch immediately
                 this._run();
             } else {
                 // otherwise, restart the timer
                 clearTimeout(this.timer);
-                this.timer = setTimeout(this._run, Math.min(this.minDelay, this.maxDelay - elapsed));
+                this.timer = setTimeout(this._run, Math.min(this.options.minDelay, this.options.maxDelay - elapsed));
             }
         } else {
             // otherwise start the timer and queue the execution
             this.start = performance.now();
-            this.timer = setTimeout(this._run, this.minDelay);
+            this.timer = setTimeout(this._run, this.options.minDelay);
         }
     };
 
@@ -209,24 +236,50 @@ export default class AjaxLoader {
 
     _send = () => {
         let batchIdx = 0;
-        let batch = new Array(this.batch.size);
+        let batch = [];
+        let reqData = [];
         let keyLookup = Object.create(null);
         this.batch.forEach((reqs,key) => {
+            if(!reqs.length) {
+                return;
+            }
+            
             batch[batchIdx] = reqs;
             keyLookup[batchIdx] = key;
+            
+            let rank = ++this.rankCounter;
+            for(let req of reqs) {
+                this.rankLookup[req._id] = rank;
+            }
+            
+            reqData[batchIdx] = {
+                route: reqs[0].route,
+                data: reqs[0].data,
+                rank,
+            };
+
             ++batchIdx;
         });
         
-        let reqData = batch.map(reqs => ({
-            route: reqs[0].route,
-            data: reqs[0].data,
-        }));
         
-        let {headers, ...options} = resolveValue(this.fetchOptions) || {};
+        // let reqData = batch.filter(reqs => reqs.length).map((reqs,key) => {
+        //     let counter = this.pending[key] = this.pending[key] ? this.pending[key] + 1 : 1; 
+        //     console.log(key,counter);
+        //    
+        //     return {
+        //         route: reqs[0].route,
+        //         data: reqs[0].data,
+        //         counter,
+        //     };
+        // });
+        
+        // console.log(reqData);
+        
+        let {headers, ...options} = resolveValue(this.options.fetchOptions) || {};
         
         // console.log('send',this.endpoint,reqData);
         
-        fetch(this.endpoint, {
+        fetch(this.options.endpoint, {
             method: 'POST',
             credentials: 'same-origin',
             ...options,
@@ -245,32 +298,42 @@ export default class AjaxLoader {
                 for(let i = 0; i < responses.length; ++i) {
                     let res = responses[i];
                     
-                    if(this.cache && res.type === 'success') {
-                        this.cache.set(keyLookup[i], res.payload);
+                    if(this.options.cache && res.type === 'success') {
+                        this.options.cache.set(keyLookup[i], res.payload);
                     }
                     
                     for(let req of batch[i]) {
-                        switch(res.type) {
-                            case 'success': 
-                                success(req, res.payload); // FIXME: do not invoke if this request is old
-                                break;
-                            case 'error':
-                                if(process.env.NODE_ENV !== 'production') {
-                                    console.group(`Error in response to route "${req.route}"`);
-                                    console.error(res.payload.message);
-                                    console.info("Request:", req);
-                                    console.info("Response:", res.payload);
-                                    console.groupEnd();
-                                }
+                        let expectedRank = this.rankLookup[req._id];
+                        
+                        if(!res.rank || res.rank == expectedRank) {
+                            switch(res.type) {
+                                case 'success':
+                                    success(req, res.payload); // FIXME: do not invoke if this request is old
+                                    break;
+                                case 'error':
+                                    if(process.env.NODE_ENV !== 'production') {
+                                        console.group(`Error in response to route "${req.route}"`);
+                                        console.error(res.payload.message);
+                                        console.info("Request:", req);
+                                        console.info("Response:", res.payload);
+                                        console.groupEnd();
+                                    }
 
-                                if(req.errorProp) {
-                                    req._component.setState({
-                                        [req.errorProp]: res.payload,
-                                    });
-                                }
-                                break;
-                            default:
-                                throw new Error(`Server error: unexpected response type "${res.type}"`);
+                                    if(req.errorProp) {
+                                        req._component.setState({
+                                            [req.errorProp]: res.payload,
+                                        });
+                                    }
+                                    break;
+                                default:
+                                    throw new Error(`Server error: unexpected response type "${res.type}"`);
+                            }
+                        } else {
+                            console.group(`Got stale response to route "${req.route}"`);
+                            console.warn(`Expected ${expectedRank}, got ${res.rank}`);
+                            console.info("Request:", req);
+                            console.info("Response:", res);
+                            console.groupEnd();
                         }
                         if(req.loadingProp) {
                             req._component.setState(state => {
@@ -302,9 +365,12 @@ function setDefaults(obj, defaults, overwrite) {
             obj[key] = defaults[key];
         }
     }
-    for(let key of Object.keys(overwrite)) {
-        obj[key] = overwrite[key];
-    }
+}
+
+function map2obj(map) {
+    return Array.from(map).reduce((obj, [key, value]) => (
+        Object.assign(obj, { [key]: value }) // Be careful! Maps can have non-String keys; object literals can't.
+    ), {});
 }
 
 
@@ -325,6 +391,30 @@ function mapValues(iter, cb) {
         ++i;
     }
     return out;
+}
+
+function arrayIncludes(arr, cb) {
+    for(let i=0; i<arr.length; ++i) {
+        if((cb(arr[i],i))) {
+            return true;
+        }
+    }
+    return false;
+}
+
+function filterInPlace(a, condition) {
+    // https://stackoverflow.com/a/37319954/65387
+    let i = 0, j = 0, removed = 0;
+
+    while(i < a.length) {
+        const val = a[i];
+        if(condition(val, i, a)) a[j++] = val;
+        else ++removed;
+        ++i;
+    }
+
+    a.length = j;
+    return removed;
 }
 
 function splitArray(array, index) {
