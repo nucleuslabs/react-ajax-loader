@@ -117,13 +117,11 @@ export default class AjaxLoader {
                     let refreshFuncs = [];
                     for(let req of this.requests) {
                         const refresh = () => {
-                            // TODO: force cache bust
+                            req = {...req, noCache: true};
                             if(typeof req.data === 'function') {
-                                let data = req.data.call(this, this.props);
-                                this.lastData[req._id] = data;
-                                req = {...req, data};
+                                req.data = this.lastData[req._id] = req.data.call(this, this.props);
                             }
-                            loader._push(req);
+                            loader._push([req]);
                         };
                         
                         if(req.refreshProp) {
@@ -152,7 +150,7 @@ export default class AjaxLoader {
             let cacheHit = false;
             let key = this.options.hash([req.route,req.data]);
             
-            if(this.options.cache && req.fetchPolicy !== FP.NetworkOnly) {
+            if(this.options.cache && req.fetchPolicy !== FP.NetworkOnly && !req.noCache) {
                 let res = this.options.cache.get(key);
                 if(res !== undefined) {
                     success(req, res);
