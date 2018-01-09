@@ -237,6 +237,8 @@ export default class AjaxLoader {
         let batch = [];
         let reqData = [];
         let keyLookup = Object.create(null);
+        let rank = ++this.rankCounter;
+        
         this.batch.forEach((reqs,key) => {
             if(!reqs.length) {
                 return;
@@ -245,7 +247,6 @@ export default class AjaxLoader {
             batch[batchIdx] = reqs;
             keyLookup[batchIdx] = key;
             
-            let rank = ++this.rankCounter;
             for(let req of reqs) {
                 this.rankLookup[req._id] = rank;
             }
@@ -253,7 +254,6 @@ export default class AjaxLoader {
             reqData[batchIdx] = {
                 route: reqs[0].route,
                 data: reqs[0].data,
-                rank,
             };
 
             ++batchIdx;
@@ -286,10 +286,18 @@ export default class AjaxLoader {
                 'Content-Type': 'application/json',
                 ...headers,
             },
-            body: JSON.stringify(reqData),
+            body: JSON.stringify({
+                rank: rank,
+                requests: reqData,
+            }),
         })
             .then(res => res.json())
-            .then(responses => {
+            .then(fullResponse => {
+                const {
+                    rank: resRank,
+                    responses,
+                } = fullResponse;
+                
                 if(reqData.length !== responses.length) {
                     throw new Error(`Server error: response length (${responses.length}) does not match request length (${reqData.length})`);
                 }
@@ -303,10 +311,10 @@ export default class AjaxLoader {
                     for(let req of batch[i]) {
                         let expectedRank = this.rankLookup[req._id];
                         
-                        if(!res.rank || res.rank == expectedRank) {
+                        if(!resRank || resRank == expectedRank) {
                             switch(res.type) {
                                 case 'success':
-                                    success(req, res.payload); // FIXME: do not invoke if this request is old
+                                    success(req, res.payload); 
                                     break;
                                 case 'error':
                                     if(process.env.NODE_ENV !== 'production') {
@@ -328,7 +336,7 @@ export default class AjaxLoader {
                             }
                         } else {
                             console.group(`Got stale response to route "${req.route}"`);
-                            console.warn(`Expected ${expectedRank}, got ${res.rank}`);
+                            console.warn(`Expected ${expectedRank}, got ${resRank}`);
                             console.info("Request:", req);
                             console.info("Response:", res);
                             console.groupEnd();
