@@ -117,7 +117,7 @@ export default class AjaxLoader {
                     let refreshFuncs = [];
                     for(let req of this.requests) {
                         const refresh = () => {
-                            req = {...req, noCache: true};
+                            req = {...req, _noCache: true};
                             if(typeof req.data === 'function') {
                                 req.data = this.lastData[req._id] = req.data.call(this, this.props);
                             }
@@ -150,16 +150,20 @@ export default class AjaxLoader {
             let cacheHit = false;
             let key = this.options.hash([req.route,req.data]);
             
-            if(this.options.cache && req.fetchPolicy !== FP.NetworkOnly && !req.noCache) {
+            if(this.options.cache && req.fetchPolicy !== FP.NetworkOnly && !req._noCache) {
                 let res = this.options.cache.get(key);
                 if(res !== undefined) {
-                    success(req, res);
+                    success(req, res.payload);
                     if(req.fetchPolicy !== FP.CacheAndNetwork) {
                         continue;
                     }
                     cacheHit = true;
+                    req._etag = res.etag; // fixme: is it safe to mutate the request like this?
                 }
             }
+            
+            // TODO: unbatching. if a new request comes in with the same _id as an already-queued (in-batch) request, we should
+            // replace that one instead of adding both.
             
             // console.log(JSON.stringify(map2obj(this.batch),null,2));
             // this.batch.forEach((breqs,bkey) => {
@@ -194,9 +198,8 @@ export default class AjaxLoader {
                 this.batch.set(key, [req]);
             }
 
-            if(req.loadingProp) { // FIXME: !cacheHit will cause loading to go into the negatives, no? -- no, but this still isn't right
-                // FIXME: if there's a cache hit but fetch policy is cache-and-network, then....should we show the loading or not? 
-                // FIXME: why are the results flashing when there was a cache hit..? -- I think this is because the results for the last page are coming in
+            if(req.loadingProp) { 
+                // if there's a cache hit but fetch policy is cache-and-network, then....should we show the loading or not? <-- I think so. Use it to display a spinner without blocking the entire UI to indicate we're fetching fresh data. 
                 req._component.setState(state => ({
                     [req.loadingProp]: state[req.loadingProp] ? state[req.loadingProp] + 1 : 1,
                 }));
@@ -255,6 +258,10 @@ export default class AjaxLoader {
                 route: reqs[0].route,
                 data: reqs[0].data,
             };
+            
+            if(reqs[0]._etag) {
+                reqData[batchIdx].etag = reqs[0]._etag;
+            };
 
             ++batchIdx;
         });
@@ -305,7 +312,10 @@ export default class AjaxLoader {
                     let res = responses[i];
                     
                     if(this.options.cache && res.type === 'success') {
-                        this.options.cache.set(keyLookup[i], res.payload);
+                        this.options.cache.set(keyLookup[i], {
+                            payload: res.payload,
+                            etag: res.etag,
+                        });
                     }
                     
                     for(let req of batch[i]) {
@@ -313,6 +323,9 @@ export default class AjaxLoader {
                         
                         if(!resRank || resRank == expectedRank) {
                             switch(res.type) {
+                                case 'nochange':
+                                    // payload is exactly the same as we had cached, do nothing
+                                    break;
                                 case 'success':
                                     success(req, res.payload); 
                                     break;
@@ -373,59 +386,59 @@ function setDefaults(obj, defaults, overwrite) {
     }
 }
 
-function map2obj(map) {
-    return Array.from(map).reduce((obj, [key, value]) => (
-        Object.assign(obj, { [key]: value }) // Be careful! Maps can have non-String keys; object literals can't.
-    ), {});
-}
-
-
-function map(iter, cb) {
-    let out = [];
-    let i = -1;
-    for(let x of iter) {
-        out.push(cb(x,++i));
-    }
-    return out;
-}
-
-function mapValues(iter, cb) {
-    let out = new Array(iter.size);
-    let i = 0;
-    for(let x of iter.values()) {
-        out[i] = cb(x,i);
-        ++i;
-    }
-    return out;
-}
-
-function arrayIncludes(arr, cb) {
-    for(let i=0; i<arr.length; ++i) {
-        if((cb(arr[i],i))) {
-            return true;
-        }
-    }
-    return false;
-}
-
-function filterInPlace(a, condition) {
-    // https://stackoverflow.com/a/37319954/65387
-    let i = 0, j = 0, removed = 0;
-
-    while(i < a.length) {
-        const val = a[i];
-        if(condition(val, i, a)) a[j++] = val;
-        else ++removed;
-        ++i;
-    }
-
-    a.length = j;
-    return removed;
-}
-
-function splitArray(array, index) {
-    return [array.slice(0, index), array.slice(index)];
-}
+// function map2obj(map) {
+//     return Array.from(map).reduce((obj, [key, value]) => (
+//         Object.assign(obj, { [key]: value }) // Be careful! Maps can have non-String keys; object literals can't.
+//     ), {});
+// }
+//
+//
+// function map(iter, cb) {
+//     let out = [];
+//     let i = -1;
+//     for(let x of iter) {
+//         out.push(cb(x,++i));
+//     }
+//     return out;
+// }
+//
+// function mapValues(iter, cb) {
+//     let out = new Array(iter.size);
+//     let i = 0;
+//     for(let x of iter.values()) {
+//         out[i] = cb(x,i);
+//         ++i;
+//     }
+//     return out;
+// }
+//
+// function arrayIncludes(arr, cb) {
+//     for(let i=0; i<arr.length; ++i) {
+//         if((cb(arr[i],i))) {
+//             return true;
+//         }
+//     }
+//     return false;
+// }
+//
+// function filterInPlace(a, condition) {
+//     // https://stackoverflow.com/a/37319954/65387
+//     let i = 0, j = 0, removed = 0;
+//
+//     while(i < a.length) {
+//         const val = a[i];
+//         if(condition(val, i, a)) a[j++] = val;
+//         else ++removed;
+//         ++i;
+//     }
+//
+//     a.length = j;
+//     return removed;
+// }
+//
+// function splitArray(array, index) {
+//     return [array.slice(0, index), array.slice(index)];
+// }
 
 /**
  * Unwraps a value. If passed a function, evaluates that function with the provided args. Otherwise, returns the value as-is.
