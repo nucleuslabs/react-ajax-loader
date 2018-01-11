@@ -96,8 +96,8 @@ public static function handle(\NucleusLabs\JsonBag $batch) {
 
 Use the HOC in all of your components:
 
-```js
-// UserSelect.js
+```jsx
+// UserSelect.jsx
 import ajaxLoader from './ajax-loader.js';
 import pick from 'lodash/fp/pick';
 
