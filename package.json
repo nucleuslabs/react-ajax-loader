@@ -1,6 +1,6 @@
 {
   "name": "react-ajax-loader",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "React HOC to asynchronously load data into your component",
   "browser": "src/index.js",
   "scripts": {
@@ -17,15 +17,12 @@
     "url": "https://bitbucket.org/nucleuslabs/react-ajax-loader"
   },
   "dependencies": {
-    "lodash": "^4.17.4",
     "lru-cache": "^4.1.1",
     "object-hash": "^1.2.0",
-    "recompose": "^0.26.0",
-    "shallowequal": "^1.0.2",
-    "whatwg-fetch": "^2.0.3"
+    "shallowequal": "^1.0.2"
   },
   "devDependencies": {
-    "bundilio": "^0.4.3"
+    "bundilio": "^0.4.4"
   },
   "peerDependencies": {
     "react": "^16.2.0"
