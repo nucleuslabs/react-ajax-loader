@@ -21,7 +21,6 @@ export default class AjaxLoader {
         defaultEqualityCheck = shallowEqual,
         defaultHandler = setStateHandler,
         defaultFetchPolicy = FP.CacheAndNetwork,
-      
     }) {
         this.options = {
             endpoint,
