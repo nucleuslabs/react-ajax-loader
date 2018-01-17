@@ -80,6 +80,7 @@ export default class AjaxLoader {
                         _id: ++loader.reqId,
                     })); 
                     this.lastData = Object.create(null);
+                    this.state = Object.create(null); // fixes "Cannot read property 'loading' of null" in React 16
                 }
                 
                 componentWillMount() {
