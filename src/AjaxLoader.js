@@ -85,7 +85,7 @@ export default class AjaxLoader {
                 }
                 
                 componentWillMount() {
-                    loader._push(this.requests.reduce((acc,req) => {
+                    let requests = this.requests.reduce((acc,req) => {
                         let data = resolveValue.call(this, req.initialData, this.props);
 
                         if(data !== undefined) {
@@ -101,7 +101,11 @@ export default class AjaxLoader {
                         }
 
                         return acc;
-                    }, []));
+                    }, []);
+                    
+                    if(requests.length) {
+                        loader._push(requests);
+                    }
                 }
 
                 componentWillReceiveProps(nextProps) {
