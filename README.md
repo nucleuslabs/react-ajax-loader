@@ -156,6 +156,7 @@ const UserSelect = ajaxLoader.hoc({
     dataProp: this.options.defaultDataProp, // Name of data prop. Not used if you override handler.
     refreshProp: null, // Name of prop used to re-send just this request. Use `refreshAllProp` to re-send all requests bound to this component.
     fetchPolicy: this.options.defaultFetchPolicy, // One of "cache-first", "cache-and-network", "network-only" or "cache-only"
+    initialData: null, // Bypass the first (on-mount) request and use this data instead. This allows you to pass the first payload with your HTML and avoid a RTT. Data will be passed through the `handler`
 }
 ```
 

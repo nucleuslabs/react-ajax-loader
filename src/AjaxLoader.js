@@ -63,6 +63,7 @@ export default class AjaxLoader {
                 dataProp: this.options.defaultDataProp,
                 refreshProp: null,
                 fetchPolicy: this.options.defaultFetchPolicy,
+                initialData: undefined, 
             });
         }
 
@@ -84,15 +85,23 @@ export default class AjaxLoader {
                 }
                 
                 componentWillMount() {
-                    loader._push(this.requests.map(req => {
-                        if(typeof req.data === 'function') {
-                            let data = req.data.call(this, this.props);
-                            this.lastData[req._id] = data;
-                            req = {...req, data};
+                    loader._push(this.requests.reduce((acc,req) => {
+                        let data = resolveValue.call(this, req.initialData, this.props);
+
+                        if(data !== undefined) {
+                            success(req, data);
+                        } else {
+                            if(typeof req.data === 'function') {
+                                let data = req.data.call(this, this.props);
+                                this.lastData[req._id] = data;
+                                req = {...req, data};
+                            }
+
+                            acc.push(req);
                         }
 
-                        return req;
-                    }));
+                        return acc;
+                    }, []));
                 }
 
                 componentWillReceiveProps(nextProps) {
