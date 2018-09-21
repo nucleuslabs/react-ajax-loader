@@ -224,7 +224,7 @@ export default class AjaxLoader {
             this._run();
         } else if(this.start) {
             // if the timer has been started...
-            let elapsed = performance.now() - this.start;
+            let elapsed = getElapsedTime() - this.start;
             if(elapsed >= this.options.maxDelay) {
                 // if max delay is exceeded, send the batch immediately
                 this._run();
@@ -235,7 +235,7 @@ export default class AjaxLoader {
             }
         } else {
             // otherwise start the timer and queue the execution
-            this.start = performance.now();
+            this.start = getElapsedTime();
             this.timer = setTimeout(this._run, this.options.minDelay);
         }
     };
@@ -468,4 +468,11 @@ function setStateHandler(data, options) {
     this.setState({
         [options.dataProp]: data,
     });
+}
+
+/** The returned value represents the time elapsed since the time origin. When performance.now() is unavailable, will use fallback which is approximately equal.
+ * See #35979. https://developer.mozilla.org/en-US/docs/Web/API/Performance/now (Compatible IE > 9)
+ * @returns double|int  The elapsed time */
+function getElapsedTime() {
+    return typeof performance.now === "undefined" ? (Date.now() - performance.timing.navigationStart) : performance.now();
 }
