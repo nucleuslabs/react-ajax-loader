@@ -125,6 +125,7 @@ export default class AjaxLoader {
                     if(updated.length) {
                         loader._push(updated);
                     }
+                    return true;
                 }
 
                 render() {
