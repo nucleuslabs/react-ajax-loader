@@ -1,6 +1,6 @@
 {
   "name": "react-ajax-loader",
-  "version": "0.1.12",
+  "version": "0.1.13",
   "description": "React HOC to asynchronously load data into your component",
   "browser": "src/index.js",
   "scripts": {

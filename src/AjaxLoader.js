@@ -83,7 +83,7 @@ export default class AjaxLoader {
                     })); 
                     this.lastData = Object.create(null);
                     this.state = Object.create(null); // fixes "Cannot read property 'loading' of null" in React 16
-                    this.prepare();
+                    this.mounted = false;
                 }
                 
                 prepare() {
@@ -111,6 +111,9 @@ export default class AjaxLoader {
                 }
 
                 shouldComponentUpdate(nextProps) {
+                    if(!this.mounted){
+                        return false;
+                    }
                     let updated = this.requests.reduce((acc, req) => {
                         if(typeof req.data === 'function') {
                             let data = req.data.call(this, nextProps);
@@ -128,6 +131,11 @@ export default class AjaxLoader {
                     return true;
                 }
 
+                componentDidMount() {
+                    this.mounted = true;
+                    this.prepare();
+                }
+
                 render() {
                     let props = {...this.props, ...this.state};
                     let refreshFuncs = [];
@@ -139,7 +147,7 @@ export default class AjaxLoader {
                             }
                             loader._push([req]);
                         };
-                        
+
                         if(req.refreshProp) {
                             props[req.refreshProp] = refresh;
                         }
