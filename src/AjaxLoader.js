@@ -83,15 +83,18 @@ export default class AjaxLoader {
                     })); 
                     this.lastData = Object.create(null);
                     this.state = Object.create(null); // fixes "Cannot read property 'loading' of null" in React 16
-
+                    this.prepare();
+                }
+                
+                prepare() {
                     let requests = this.requests.reduce((acc,req) => {
-                        let data = resolveValue.call(this, req.initialData, props);
+                        let data = resolveValue.call(this, req.initialData, this.props);
 
                         if(data !== undefined) {
                             success(req, data);
                         } else {
                             if(typeof req.data === 'function') {
-                                let data = req.data.call(this, props);
+                                let data = req.data.call(this, this.props);
                                 this.lastData[req._id] = data;
                                 req = {...req, data};
                             }
@@ -106,31 +109,6 @@ export default class AjaxLoader {
                         loader._push(requests);
                     }
                 }
-
-                
-                // componentWillMount() {
-                //     let requests = this.requests.reduce((acc,req) => {
-                //         let data = resolveValue.call(this, req.initialData, this.props);
-                //
-                //         if(data !== undefined) {
-                //             success(req, data);
-                //         } else {
-                //             if(typeof req.data === 'function') {
-                //                 let data = req.data.call(this, this.props);
-                //                 this.lastData[req._id] = data;
-                //                 req = {...req, data};
-                //             }
-                //
-                //             acc.push(req);
-                //         }
-                //
-                //         return acc;
-                //     }, []);
-                //
-                //     if(requests.length) {
-                //         loader._push(requests);
-                //     }
-                // }
 
                 shouldComponentUpdate(nextProps) {
                     let updated = this.requests.reduce((acc, req) => {
@@ -147,7 +125,6 @@ export default class AjaxLoader {
                     if(updated.length) {
                         loader._push(updated);
                     }
-                    return true;
                 }
 
                 render() {
