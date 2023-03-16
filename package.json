@@ -1,9 +1,10 @@
 {
   "name": "react-ajax-loader",
-  "version": "0.1.14",
+  "version": "0.2.0",
   "description": "React HOC to asynchronously load data into your component",
   "browser": "src/index.js",
   "scripts": {
+    "test": "jest",
     "build": "bundilio",
     "publish": "cd dist && npm publish"
   },
@@ -13,8 +14,8 @@
     "registry": "https://registry.npmjs.org"
   },
   "repository": {
-    "type": "hg",
-    "url": "https://bitbucket.org/nucleuslabs/react-ajax-loader"
+    "type": "git",
+    "url": "https://github.com/nucleuslabs/react-ajax-loader"
   },
   "dependencies": {
     "lru-cache": "^4.1.1",
@@ -22,9 +23,30 @@
     "shallowequal": "^1.0.2"
   },
   "devDependencies": {
-    "bundilio": "^0.4.5"
+    "@babel/core": "^7.8.6",
+    "@babel/preset-env": "^7.8.6",
+    "@babel/preset-react": "^7.8.3",
+    "@testing-library/react": "^13",
+    "bundilio": "^0.4.5",
+    "fetch-mock": "9.0.0",
+    "jest": "^25.1.0",
+    "jest-extended": "^0.11.5",
+    "node-fetch": "^2.6.0"
+  },
+  "jest": {
+    "testMatch": [
+      "**/__tests__/**/*.(spec|test).[jt]s?(x)"
+    ],
+    "setupFilesAfterEnv": [
+      "jest-extended"
+    ],
+    "collectCoverageFrom": [
+      "**/src/*.js",
+      "**/src/fetch/*.js",
+      "**/src/hooks/*.jsx"
+    ]
   },
   "peerDependencies": {
-    "react": "^16.8.6"
+    "react": "^16.8.6 || ^17 || ^18"
   }
 }
